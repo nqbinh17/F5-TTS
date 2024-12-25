@@ -308,7 +308,7 @@ def main():
         reg1 = r"(?=\[\w+\])"
         chunks = re.split(reg1, gen_text)
     else:
-        chunks = gen_text.strip()
+        chunks = [gen_text.strip()]
     reg2 = r"\[(\w+)\]"
     for text in chunks:
         if not text.strip():
