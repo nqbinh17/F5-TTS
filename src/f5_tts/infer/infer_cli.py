@@ -26,6 +26,7 @@ from f5_tts.infer.utils_infer import (
     load_vocoder,
     preprocess_ref_audio_text,
     remove_silence_for_generated_wav,
+    chunk
 )
 from f5_tts.model import DiT, UNetT
 
@@ -162,6 +163,11 @@ parser.add_argument(
     type=float,
     help=f"Fix the total duration (ref and gen audios) in seconds, default {fix_duration}",
 )
+parser.add_argument(
+    "--chunk",
+    type=bool,
+    help=f"Chunk generate text into smaller chunks, default {chunk}",
+)
 args = parser.parse_args()
 
 
@@ -203,6 +209,7 @@ cfg_strength = args.cfg_strength or config.get("cfg_strength", cfg_strength)
 sway_sampling_coef = args.sway_sampling_coef or config.get("sway_sampling_coef", sway_sampling_coef)
 speed = args.speed or config.get("speed", speed)
 fix_duration = args.fix_duration or config.get("fix_duration", fix_duration)
+chunk = args.chunk or config.get("chunk", chunk)
 
 
 # patches for pip pkg user
@@ -296,8 +303,12 @@ def main():
         print("ref_audio_", voices[voice]["ref_audio"], "\n\n")
 
     generated_audio_segments = []
-    reg1 = r"(?=\[\w+\])"
-    chunks = re.split(reg1, gen_text)
+    
+    if chunk:
+        reg1 = r"(?=\[\w+\])"
+        chunks = re.split(reg1, gen_text)
+    else:
+        chunks = gen_text.strip()
     reg2 = r"\[(\w+)\]"
     for text in chunks:
         if not text.strip():
@@ -330,6 +341,7 @@ def main():
             sway_sampling_coef=sway_sampling_coef,
             speed=speed,
             fix_duration=fix_duration,
+            chunk=chunk
         )
         generated_audio_segments.append(audio_segment)
 

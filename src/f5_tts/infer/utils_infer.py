@@ -51,7 +51,7 @@ cfg_strength = 2.0
 sway_sampling_coef = -1.0
 speed = 1.0
 fix_duration = None
-
+chunk = False
 # -----------------------------------------
 
 
@@ -371,11 +371,16 @@ def infer_process(
     speed=speed,
     fix_duration=fix_duration,
     device=device,
+    chunk = True
 ):
     # Split the input text into batches
     audio, sr = torchaudio.load(ref_audio)
     max_chars = int(len(ref_text.encode("utf-8")) / (audio.shape[-1] / sr) * (25 - audio.shape[-1] / sr))
-    gen_text_batches = chunk_text(gen_text, max_chars=max_chars)
+    if chunk:
+        gen_text_batches = chunk_text(gen_text, max_chars=max_chars)
+    else:
+        gen_text_batches = [gen_text.strip()]
+
     for i, gen_text in enumerate(gen_text_batches):
         print(f"gen_text {i}", gen_text)
     print("\n")
