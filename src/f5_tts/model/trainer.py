@@ -297,6 +297,7 @@ class Trainer:
                     text_inputs = batch["text"]
                     mel_spec = batch["mel"].permute(0, 2, 1)
                     mel_lengths = batch["mel_lengths"]
+                    audio_mask = batch.get('audio_mask', None)
 
                     # TODO. add duration predictor training
                     if self.duration_predictor is not None and self.accelerator.is_local_main_process:
@@ -304,7 +305,7 @@ class Trainer:
                         self.accelerator.log({"duration loss": dur_loss.item()}, step=global_step)
 
                     loss, cond, pred = self.model(
-                        mel_spec, text=text_inputs, lens=mel_lengths, noise_scheduler=self.noise_scheduler
+                        mel_spec, text=text_inputs, lens=mel_lengths, noise_scheduler=self.noise_scheduler, audio_mask = audio_mask
                     )
                     self.accelerator.backward(loss)
 

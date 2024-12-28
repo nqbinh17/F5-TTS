@@ -337,7 +337,7 @@ class FeedForward(nn.Module):
 class Attention(nn.Module):
     def __init__(
         self,
-        processor: JointAttnProcessor | AttnProcessor,
+        processor: JointAttnProcessor | AttnProcessor | CrossAttnProcessor,
         dim: int,
         heads: int = 8,
         dim_head: int = 64,
@@ -384,15 +384,100 @@ class Attention(nn.Module):
         mask: bool["b n"] | None = None,  # noqa: F722
         rope=None,  # rotary position embedding for x
         c_rope=None,  # rotary position embedding for c
+        key: float["b n d"] | None = None,
+        query_mask: float["b n d"] | None = None,
     ) -> torch.Tensor:
-        if c is not None:
+        if isinstance(self.processor, CrossAttnProcessor):
+            return self.processor(self, query = x, key = key, value = key, mask=mask, query_mask = query_mask)
+
+        elif c is not None:
             return self.processor(self, x, c=c, mask=mask, rope=rope, c_rope=c_rope)
         else:
             return self.processor(self, x, mask=mask, rope=rope)
 
 
-# Attention processor
+# Cross Attention Processor for Audio - Text Attention
 
+def createAudioTextMask(audio_mask, text_mask):
+  # Reshape query_mask and key_mask to make them broadcastable
+  audio_mask = audio_mask.unsqueeze(-1).bool()  # shape (b, n, 1)
+  text_mask = text_mask.unsqueeze(-2).bool()      # shape (b, 1, m)
+
+  # Perform a broadcasted logical AND operation to create the combined mask
+  combined_mask = audio_mask & text_mask  # shape (b, n, m)
+
+  return combined_mask
+
+def scaled_dot_product_cross_attention(query, key, value, attn_mask=None, dropout_p=0.0,
+        is_causal=False, scale=None, enable_gqa=False) -> torch.Tensor:
+    B, L, S = query.size(0), query.size(-2), key.size(-2)
+    scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    attn_bias = torch.zeros(B, L, S, dtype=query.dtype)
+    if is_causal:
+        assert attn_mask is None
+        temp_mask = torch.ones(B, L, S, dtype=torch.bool).tril(diagonal=0)
+        attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+        attn_bias.to(query.dtype)
+
+    if attn_mask is not None:
+        if attn_mask.dtype == torch.bool:
+            attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+        else:
+            attn_bias += attn_mask
+
+    if enable_gqa:
+        key = key.repeat_interleave(query.size(-3)//key.size(-3), -3)
+        value = value.repeat_interleave(query.size(-3)//value.size(-3), -3)
+
+    attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    attn_weight += attn_bias.unsqueeze(1)
+    attn_weight = torch.softmax(attn_weight, dim=-1)
+    attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+    return attn_weight @ value
+
+class CrossAttnProcessor:
+    def __init__(self):
+        pass
+
+    def __call__(
+        self,
+        attn: Attention,
+        query: float["b n d"],
+        key: float["b m d"],
+        value: float["b m d"],
+        mask: bool["b m n"] | None = None,
+        query_mask: bool["b n"] | None = None,
+    ) -> torch.FloatTensor:
+        batch_size = query.shape[0]
+
+        # `sample` projections.
+        query = attn.to_q(query)
+        key = attn.to_k(key)
+        value = attn.to_v(value)
+
+        # attention
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        x = scaled_dot_product_cross_attention(query, key, value, attn_mask=mask, dropout_p=0.0, is_causal=False)
+        x = x.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        x = x.to(query.dtype)
+
+        # linear proj
+        x = attn.to_out[0](x)
+        # dropout
+        x = attn.to_out[1](x)
+
+        if query_mask is not None:
+            query_mask = query_mask.unsqueeze(-1)
+            x = x.masked_fill(~query_mask, 0.0)
+
+        return x
+
+# Attention processor
 
 class AttnProcessor:
     def __init__(self):

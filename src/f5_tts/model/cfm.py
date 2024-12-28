@@ -216,6 +216,7 @@ class CFM(nn.Module):
         *,
         lens: int["b"] | None = None,  # noqa: F821
         noise_scheduler: str | None = None,
+        audio_mask = None
     ):
         # handle raw wave
         if inp.ndim == 2:
@@ -275,7 +276,7 @@ class CFM(nn.Module):
         # if want rigourously mask out padding, record in collate_fn in dataset.py, and pass in here
         # adding mask will use more memory, thus also need to adjust batchsampler with scaled down threshold for long sequences
         pred = self.transformer(
-            x=φ, cond=cond, text=text, time=time, drop_audio_cond=drop_audio_cond, drop_text=drop_text
+            x=φ, cond=cond, text=text, time=time, drop_audio_cond=drop_audio_cond, drop_text=drop_text, audio_mask = audio_mask
         )
 
         # flow matching loss

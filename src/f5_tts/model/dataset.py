@@ -440,9 +440,18 @@ def collate_fn(batch):
     text = [item["text"] for item in batch]
     text_lengths = torch.LongTensor([len(item) for item in text])
 
+    # Create audio_mask = batch * mel_lengths
+    batch_size = len(mel_specs)
+    audio_mask = torch.zeros((batch_size, max_mel_length), dtype=torch.bool)
+
+    # Iterate over each spectrogram's length to update the mask
+    for i, length in enumerate(mel_lengths):
+        audio_mask[i, :length] = 1
+
     return dict(
         mel=mel_specs,
         mel_lengths=mel_lengths,
         text=text,
         text_lengths=text_lengths,
+        audio_mask=audio_mask
     )

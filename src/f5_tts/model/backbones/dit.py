@@ -23,6 +23,9 @@ from f5_tts.model.modules import (
     AdaLayerNormZero_Final,
     precompute_freqs_cis,
     get_pos_embed_indices,
+    Attention,
+    CrossAttnProcessor,
+    createAudioTextMask
 )
 
 
@@ -46,7 +49,7 @@ class TextEmbedding(nn.Module):
 
     def forward(self, text: int["b nt"], seq_len, drop_text=False):  # noqa: F722
         text = text + 1  # use 0 as filler token. preprocess of batch pad -1, see list_str_to_idx()
-        text = text[:, :seq_len]  # curtail if character tokens are more than the mel spec tokens
+        seq_len = text.size(1)
         batch, text_len = text.shape[0], text.shape[1]
         text = F.pad(text, (0, seq_len - text_len), value=0)
 
@@ -78,16 +81,42 @@ class TextEmbedding(nn.Module):
 
 
 class InputEmbedding(nn.Module):
-    def __init__(self, mel_dim, text_dim, out_dim):
+    def __init__(self, mel_dim, text_dim, out_dim, heads, dim_head):
         super().__init__()
-        self.proj = nn.Linear(mel_dim * 2 + text_dim, out_dim)
+        self.proj = nn.Linear(mel_dim * 2, out_dim)
+        self.text_proj = nn.Linear(text_dim, out_dim)
+        self.cross_attention = Attention(
+            processor=CrossAttnProcessor(),
+            dim=mel_dim,
+            heads=heads,
+            dim_head=dim_head
+        )
         self.conv_pos_embed = ConvPositionEmbedding(dim=out_dim)
 
-    def forward(self, x: float["b n d"], cond: float["b n d"], text_embed: float["b n d"], drop_audio_cond=False):  # noqa: F722
+    def forward(self, 
+                x: float["b n d"], 
+                cond: float["b n d"], 
+                text_embed: float["b n d"], 
+                drop_audio_cond=False,
+                audio_mask = None,
+                text_mask = None):  # noqa: F722
         if drop_audio_cond:  # cfg for cond audio
             cond = torch.zeros_like(cond)
 
-        x = self.proj(torch.cat((x, cond, text_embed), dim=-1))
+        x = self.proj(torch.cat((x, cond), dim=-1))
+        text_embed = self.text_proj(text_embed)
+
+        attn_mask = None
+        if audio_mask and text_mask:
+            attn_mask = createAudioTextMask(audio_mask=audio_mask, text_mask=text_mask)
+
+        x = self.cross_attention(
+            x = x,
+            key = text_embed,
+            mask = attn_mask,
+            query_mask = audio_mask
+        )
+
         x = self.conv_pos_embed(x) + x
         return x
 
@@ -152,6 +181,7 @@ class DiT(nn.Module):
         drop_audio_cond,  # cfg for cond audio
         drop_text,  # cfg for text
         mask: bool["b n"] | None = None,  # noqa: F722
+        audio_mask = None
     ):
         batch, seq_len = x.shape[0], x.shape[1]
         if time.ndim == 0:
@@ -160,7 +190,7 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         t = self.time_embed(time)
         text_embed, text_mask = self.text_embed(text, seq_len, drop_text=drop_text)
-        x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond)
+        x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond, text_mask=text_mask, audio_mask=audio_mask)
 
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
