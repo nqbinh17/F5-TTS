@@ -256,11 +256,13 @@ class ConvNeXtV2Block(nn.Module):
         self.grn = GRN(intermediate_dim)
         self.pwconv2 = nn.Linear(intermediate_dim, dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         residual = x
         x = x.transpose(1, 2)  # b n d -> b d n
         x = self.dwconv(x)
         x = x.transpose(1, 2)  # b d n -> b n d
+        # Apply mask after convolution
+        x = x * mask.unsqueeze(-1)
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)

@@ -1,5 +1,6 @@
 import json
 import random
+import datasets
 from importlib.resources import files
 
 import torch
@@ -12,8 +13,136 @@ from torch.utils.data import Dataset, Sampler
 from tqdm import tqdm
 
 from f5_tts.model.modules import MelSpec
-from f5_tts.model.utils import default
+from f5_tts.model.utils import (
+    default,
+    convert_char_to_pinyin
+)
 
+
+# Binh
+
+class AudioDataset(Dataset):
+    def __init__(
+        self,
+        dataset_name: str = "fixie-ai/librispeech_asr",
+        datafiles: list[str] = ["clean/test-00000-of-00002.parquet", "clean/test-00001-of-00002.parquet"],
+        split: str = 'train',
+        target_sample_rate=24_000,
+        n_mel_channels=100,
+        hop_length=256,
+        n_fft=1024,
+        win_length=1024,
+        mel_spec_type="vocos",
+        augmentation=True,
+        num_proc=2,
+    ):
+        self.dataset = load_dataset(
+            dataset_name,
+            data_files=datafiles,
+            split=split
+        )
+
+        self.target_sample_rate = target_sample_rate
+        self.hop_length = hop_length
+
+        self.mel_spectrogram = MelSpec(
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            n_mel_channels=n_mel_channels,
+            target_sample_rate=target_sample_rate,
+            mel_spec_type=mel_spec_type,
+        )
+        self.SpeakerChapter = []
+        self.vocab = set()
+        self.dataset = self.dataset.map(self.processData, num_proc=num_proc, with_indices=True).remove_columns(["audio"])
+        self.augmentation = augmentation
+        self.prepareTokenizer()
+        self.prepareAugmentation()
+
+    def __len__(self):
+        return len(self.dataset)
+                
+    def prepareTokenizer(self):
+        self.vocab.remove(' ')
+        self.vocab_char_map = {item: idx+1 for idx, item in enumerate(self.vocab)}
+        self.vocab_char_map[' '] = 0 # used for unknown, pad tokens
+        self.vocab_size = len(self.vocab_char_map)
+        return
+
+    def getTokenizer(self):
+        return self.vocab_char_map, self.vocab_size
+
+    def prepareAugmentation(self):
+        self.groupSpeakerChapter = {}
+
+        for key, index in self.SpeakerChapter:
+          if key not in self.groupSpeakerChapter:
+            self.groupSpeakerChapter[key] = []
+
+          self.groupSpeakerChapter[key].append(index)
+
+    def getSpeakerChapterKey(self, data):
+        return f"{data['speaker_id']}_{data['chapter_id']}"
+
+    def processData(self, datapoint, index):
+        audio_data = datapoint['audio']
+        waveform = torch.tensor(audio_data['array']).float()
+
+        sample_rate = audio_data['sampling_rate']
+        text = datapoint['text']
+
+        text = convert_char_to_pinyin([text], polyphone=True)[0]
+
+        waveform = waveform.unsqueeze(0)  # 't -> 1 t'
+
+        if sample_rate != self.target_sample_rate:
+            resampler = torchaudio.transforms.Resample(sample_rate, self.target_sample_rate)
+            waveform = resampler(waveform)
+
+        mel_spec = self.mel_spectrogram(waveform)
+
+        mel_spec = mel_spec.squeeze(0)  # '1 d t -> d t'
+
+        # This is for latter data augmentation
+        key = self.getSpeakerChapterKey(datapoint)
+        self.SpeakerChapter.append([key, index])
+
+        # Update Tokenizer
+        self.vocab.update(set(text))
+
+        return {
+            "mel_spec": mel_spec,
+            "text": text
+        }
+
+    def __getitem__(self, idx):
+        datapoint = self.dataset[idx]
+        mel_spec = torch.Tensor(datapoint['mel_spec'])
+        text = datapoint['text']
+
+        key = self.getSpeakerChapterKey(datapoint)
+        if self.augmentation and len(self.groupSpeakerChapter[key]) > 2:
+          sample_indices = random.sample(self.groupSpeakerChapter[key], 2)
+          texts = text
+
+          mel_specs = [mel_spec]
+
+          for index in sample_indices:
+            datapoint = self.dataset[index]
+            mel_spec = torch.Tensor(datapoint['mel_spec'])
+            text = datapoint['text']
+
+            texts += text
+            mel_specs.append(mel_spec)
+
+          mel_spec = torch.cat(mel_specs, dim = 1)
+          text = texts
+
+        return {
+            "mel_spec": mel_spec,
+            "text": text
+        }
 
 class HFDataset(Dataset):
     def __init__(

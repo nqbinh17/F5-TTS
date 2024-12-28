@@ -50,6 +50,8 @@ class TextEmbedding(nn.Module):
         batch, text_len = text.shape[0], text.shape[1]
         text = F.pad(text, (0, seq_len - text_len), value=0)
 
+        text_mask = (text != 0).float()
+
         if drop_text:  # cfg for text
             text = torch.zeros_like(text)
 
@@ -62,11 +64,14 @@ class TextEmbedding(nn.Module):
             pos_idx = get_pos_embed_indices(batch_start, seq_len, max_pos=self.precompute_max_pos)
             text_pos_embed = self.freqs_cis[pos_idx]
             text = text + text_pos_embed
+            text = text * text_mask.unsqueeze(-1)
 
             # convnextv2 blocks
-            text = self.text_blocks(text)
+            for block in self.text_blocks:
+                text = block(text, text_mask)
+                text = text * text_mask.unsqueeze(-1)
 
-        return text
+        return text, text_mask
 
 
 # noised input audio and context mixing embedding
@@ -154,7 +159,7 @@ class DiT(nn.Module):
 
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         t = self.time_embed(time)
-        text_embed = self.text_embed(text, seq_len, drop_text=drop_text)
+        text_embed, text_mask = self.text_embed(text, seq_len, drop_text=drop_text)
         x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond)
 
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
