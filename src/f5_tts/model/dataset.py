@@ -36,7 +36,7 @@ class AudioDataset(Dataset):
         augmentation=True,
         num_proc=1,
     ):
-        self.dataset = load_dataset(
+        self.dataset = datasets.load_dataset(
             dataset_name,
             data_files=datafiles,
             split=split
@@ -144,7 +144,7 @@ class AudioDataset(Dataset):
                 datapoint = self.processData(self.dataset[index])
                 mel_spec = torch.Tensor(datapoint['mel_spec'])
                 text = datapoint['text']
-                
+
                 # Concatenate
                 texts += text
                 mel_specs.append(mel_spec)
