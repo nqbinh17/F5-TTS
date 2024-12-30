@@ -21,7 +21,7 @@ def main(cfg):
     # set text tokenizer
 
     train_dataset = load_dataset(cfg.datasets.name, tokenizer, dataset_type = cfg.datasets.dataset_type, mel_spec_kwargs=cfg.model.mel_spec)
-    if train_dataset.hasattr('getTokenizer'):
+    if hasattr(train_dataset, 'getTokenizer'):
         vocab_char_map, vocab_size = train_dataset.getTokenizer()
 
     else: 
