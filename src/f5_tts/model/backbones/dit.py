@@ -195,7 +195,7 @@ class DiT(nn.Module):
         text_embed = self.text_norm(text_embed)
         x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond, text_mask=text_mask, audio_mask=audio_mask)
         x = self.input_norm(x)
-        
+
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
         if self.long_skip_connection is not None:
@@ -203,9 +203,9 @@ class DiT(nn.Module):
 
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, mask, rope)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, audio_mask, rope)
             else:
-                x = block(x, t, mask=mask, rope=rope)
+                x = block(x, t, mask=audio_mask, rope=rope)
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))
