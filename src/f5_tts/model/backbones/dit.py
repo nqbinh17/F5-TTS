@@ -35,7 +35,7 @@ from f5_tts.model.modules import (
 class TextEmbedding(nn.Module):
     def __init__(self, text_num_embeds, text_dim, conv_layers=0, conv_mult=2):
         super().__init__()
-        self.text_embed = nn.Embedding(text_num_embeds + 1, text_dim)  # use 0 as filler token
+        self.text_embed = nn.Embedding(text_num_embeds + 1, text_dim, padding_idx = 0)  # use 0 as filler token
 
         if conv_layers > 0:
             self.extra_modeling = True

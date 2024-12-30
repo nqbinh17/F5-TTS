@@ -27,6 +27,7 @@ from f5_tts.model.utils import (
     list_str_to_tensor,
     mask_from_frac_lengths,
 )
+import torch.nn.init as init
 
 
 class CFM(nn.Module):
@@ -73,6 +74,26 @@ class CFM(nn.Module):
 
         # vocab map for tokenization
         self.vocab_char_map = vocab_char_map
+
+        self._init_weights()
+
+    def _init_weights(self):
+        """Custom weight initialization method."""
+        mean = 0.0
+        std = 0.02
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                 if module.weight.requires_grad:  # Check requires_grad
+                    module.weight.data.normal_(mean=mean, std=std)
+                 if module.bias is not None and module.bias.requires_grad:  # Check requires_grad for bias
+                    module.bias.data.zero_()
+
+            # Embedding layer initialization (same)
+            if isinstance(module, nn.Embedding):
+                if module.weight.requires_grad:  # Check requires_grad for embeddings
+                    module.weight.data.normal_(mean=mean, std=std)
+                    if module.padding_idx is not None:
+                        module.weight.data[module.padding_idx].zero_()
 
     @property
     def device(self):
