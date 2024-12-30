@@ -34,7 +34,7 @@ class AudioDataset(Dataset):
         win_length=1024,
         mel_spec_type="vocos",
         augmentation=True,
-        num_proc=2,
+        num_proc=1,
     ):
         self.dataset = load_dataset(
             dataset_name,
@@ -53,20 +53,18 @@ class AudioDataset(Dataset):
             target_sample_rate=target_sample_rate,
             mel_spec_type=mel_spec_type,
         )
-        self.SpeakerChapter = []
-        self.vocab = set()
-        self.dataset = self.dataset.map(self.processData, num_proc=num_proc, with_indices=True).remove_columns(["audio"])
+        self.preprocessing()
         self.augmentation = augmentation
-        self.prepareTokenizer()
-        self.prepareAugmentation()
+
 
     def __len__(self):
         return len(self.dataset)
                 
     def prepareTokenizer(self):
-        self.vocab.remove(' ')
+        if ' ' in self.vocab:
+            self.vocab.remove(' ')
         self.vocab_char_map = {item: idx+1 for idx, item in enumerate(self.vocab)}
-        self.vocab_char_map[' '] = 0 # used for unknown, pad tokens
+        self.vocab_char_map[' '] = 0 # used for unknown tokens
         self.vocab_size = len(self.vocab_char_map)
         return
 
@@ -85,31 +83,43 @@ class AudioDataset(Dataset):
     def getSpeakerChapterKey(self, data):
         return f"{data['speaker_id']}_{data['chapter_id']}"
 
-    def processData(self, datapoint, index):
+    def preprocessing(self):
+        self.groupSpeakerChapter = {}
+        self.vocab = set()
+        for index, datapoint in tqdm(enumerate(self.dataset)):
+          text = datapoint['text']
+          text = convert_char_to_pinyin([text], polyphone=True)[0]
+          self.vocab.update(set(text))
+
+          key = self.getSpeakerChapterKey(datapoint)
+
+          if key not in self.groupSpeakerChapter:
+            self.groupSpeakerChapter[key] = []
+
+          self.groupSpeakerChapter[key].append(index)
+
+        self.prepareTokenizer()
+
+    def processData(self, datapoint):
+        # Text Processing, will be support LLM in the future
+        text = datapoint['text']
+        text = convert_char_to_pinyin([text], polyphone=True)[0]
+
+        # Audio Processing
         audio_data = datapoint['audio']
         waveform = torch.tensor(audio_data['array']).float()
 
         sample_rate = audio_data['sampling_rate']
-        text = datapoint['text']
-
-        text = convert_char_to_pinyin([text], polyphone=True)[0]
-
-        waveform = waveform.unsqueeze(0)  # 't -> 1 t'
 
         if sample_rate != self.target_sample_rate:
             resampler = torchaudio.transforms.Resample(sample_rate, self.target_sample_rate)
             waveform = resampler(waveform)
 
+        waveform = waveform.unsqueeze(0)  # 't -> 1 t'
+
         mel_spec = self.mel_spectrogram(waveform)
 
         mel_spec = mel_spec.squeeze(0)  # '1 d t -> d t'
-
-        # This is for latter data augmentation
-        key = self.getSpeakerChapterKey(datapoint)
-        self.SpeakerChapter.append([key, index])
-
-        # Update Tokenizer
-        self.vocab.update(set(text))
 
         return {
             "mel_spec": mel_spec,
@@ -118,26 +128,29 @@ class AudioDataset(Dataset):
 
     def __getitem__(self, idx):
         datapoint = self.dataset[idx]
+        key = self.getSpeakerChapterKey(datapoint)
+        datapoint = self.processData(datapoint)
+
         mel_spec = torch.Tensor(datapoint['mel_spec'])
         text = datapoint['text']
 
-        key = self.getSpeakerChapterKey(datapoint)
         if self.augmentation and len(self.groupSpeakerChapter[key]) > 2:
-          sample_indices = random.sample(self.groupSpeakerChapter[key], 2)
-          texts = text
+            sample_indices = random.sample(self.groupSpeakerChapter[key], 2)
+            texts = text
 
-          mel_specs = [mel_spec]
+            mel_specs = [mel_spec]
 
-          for index in sample_indices:
-            datapoint = self.dataset[index]
-            mel_spec = torch.Tensor(datapoint['mel_spec'])
-            text = datapoint['text']
+            for index in sample_indices:
+                datapoint = self.processData(self.dataset[index])
+                mel_spec = torch.Tensor(datapoint['mel_spec'])
+                text = datapoint['text']
+                
+                # Concatenate
+                texts += text
+                mel_specs.append(mel_spec)
 
-            texts += text
-            mel_specs.append(mel_spec)
-
-          mel_spec = torch.cat(mel_specs, dim = 1)
-          text = texts
+            mel_spec = torch.cat(mel_specs, dim = 1)
+            text = texts
 
         return {
             "mel_spec": mel_spec,
@@ -417,6 +430,9 @@ def load_dataset(
         train_dataset = HFDataset(
             load_dataset(f"{pre}/{pre}", split=f"train.{post}", cache_dir=str(files("f5_tts").joinpath("../../data"))),
         )
+
+    elif dataset_type == 'AudioDataset':
+        train_dataset = AudioDataset(**mel_spec_kwargs)
 
     return train_dataset
 

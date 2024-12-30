@@ -87,7 +87,7 @@ class InputEmbedding(nn.Module):
         self.text_proj = nn.Linear(text_dim, out_dim)
         self.cross_attention = Attention(
             processor=CrossAttnProcessor(),
-            dim=mel_dim,
+            dim=out_dim,
             heads=heads,
             dim_head=dim_head
         )
@@ -107,7 +107,7 @@ class InputEmbedding(nn.Module):
         text_embed = self.text_proj(text_embed)
 
         attn_mask = None
-        if audio_mask and text_mask:
+        if audio_mask is not None and text_mask is not None:
             attn_mask = createAudioTextMask(audio_mask=audio_mask, text_mask=text_mask)
 
         x = self.cross_attention(
@@ -147,7 +147,7 @@ class DiT(nn.Module):
         if text_dim is None:
             text_dim = mel_dim
         self.text_embed = TextEmbedding(text_num_embeds, text_dim, conv_layers=conv_layers)
-        self.input_embed = InputEmbedding(mel_dim, text_dim, dim)
+        self.input_embed = InputEmbedding(mel_dim, text_dim, dim, heads=heads, dim_head=dim_head)
 
         self.rotary_embed = RotaryEmbedding(dim_head)
 

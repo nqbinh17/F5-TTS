@@ -19,11 +19,18 @@ def main(cfg):
     exp_name = f"{cfg.model.name}_{mel_spec_type}_{cfg.model.tokenizer}_{cfg.datasets.name}"
 
     # set text tokenizer
-    if tokenizer != "custom":
-        tokenizer_path = cfg.datasets.name
-    else:
-        tokenizer_path = cfg.model.tokenizer_path
-    vocab_char_map, vocab_size = get_tokenizer(tokenizer_path, tokenizer)
+
+    train_dataset = load_dataset(cfg.datasets.name, tokenizer, dataset_type = cfg.datasets.dataset_type, mel_spec_kwargs=cfg.model.mel_spec)
+    if train_dataset.hasattr('getTokenizer'):
+        vocab_char_map, vocab_size = train_dataset.getTokenizer()
+
+    else: 
+        if tokenizer != "custom":
+            tokenizer_path = cfg.datasets.name
+        else:
+            tokenizer_path = cfg.model.tokenizer_path
+
+        vocab_char_map, vocab_size = get_tokenizer(tokenizer_path, tokenizer)
 
     # set model
     if "F5TTS" in cfg.model.name:
@@ -63,7 +70,6 @@ def main(cfg):
         local_vocoder_path=cfg.model.vocoder.local_path,
     )
 
-    train_dataset = load_dataset(cfg.datasets.name, tokenizer, mel_spec_kwargs=cfg.model.mel_spec)
     trainer.train(
         train_dataset,
         num_workers=cfg.datasets.num_workers,
