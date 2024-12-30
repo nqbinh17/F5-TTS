@@ -226,6 +226,7 @@ class CFM(nn.Module):
 
         batch, seq_len, dtype, device, _σ1 = *inp.shape[:2], inp.dtype, self.device, self.sigma
 
+        audio_mask = audio_mask.to(device)
         # handle text as string
         if isinstance(text, list):
             if exists(self.vocab_char_map):
