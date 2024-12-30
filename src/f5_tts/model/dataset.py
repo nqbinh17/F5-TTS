@@ -33,8 +33,7 @@ class AudioDataset(Dataset):
         n_fft=1024,
         win_length=1024,
         mel_spec_type="vocos",
-        augmentation=True,
-        num_proc=1,
+        augmentation=False,
     ):
         self.dataset = datasets.load_dataset(
             dataset_name,
