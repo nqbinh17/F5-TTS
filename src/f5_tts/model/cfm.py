@@ -283,11 +283,6 @@ class CFM(nn.Module):
         # flow matching loss
         loss = F.mse_loss(pred, flow, reduction="none")
         # Apply mask to loss
-        expanded_audio_mask = audio_mask.unsqueeze(-1)  # Shape: (bs, len, 1)
-        loss = loss * expanded_audio_mask
         loss = loss[rand_span_mask]
-
-        mask_sum = expanded_audio_mask.sum()
-
-        loss = loss.sum() / mask_sum
+        loss = loss.mean()
         return loss, cond, pred
