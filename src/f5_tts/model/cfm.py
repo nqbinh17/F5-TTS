@@ -287,4 +287,7 @@ class CFM(nn.Module):
         loss = loss * expanded_audio_mask
         loss = loss[rand_span_mask]
 
-        return loss.mean(), cond, pred
+        mask_sum = expanded_audio_mask.sum()
+
+        loss = loss.sum() / mask_sum
+        return loss, cond, pred

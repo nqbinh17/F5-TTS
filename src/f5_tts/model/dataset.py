@@ -128,6 +128,12 @@ class AudioDataset(Dataset):
 
     def __getitem__(self, idx):
         datapoint = self.dataset[idx]
+
+        sample_rate = datapoint["audio"]["sampling_rate"]
+        duration = datapoint['audio']['array'].shape[-1] / sample_rate
+        if duration < 0.3:
+            return self.__getitem__((index + 1) % len(self.data))
+        
         key = self.getSpeakerChapterKey(datapoint)
         datapoint = self.processData(datapoint)
 

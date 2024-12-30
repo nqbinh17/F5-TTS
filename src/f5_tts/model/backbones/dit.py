@@ -147,7 +147,9 @@ class DiT(nn.Module):
         if text_dim is None:
             text_dim = mel_dim
         self.text_embed = TextEmbedding(text_num_embeds, text_dim, conv_layers=conv_layers)
+        self.text_norm = nn.LayerNorm(text_dim)
         self.input_embed = InputEmbedding(mel_dim, text_dim, dim, heads=heads, dim_head=dim_head)
+        self.input_norm = nn.LayerNorm(dim)
 
         self.rotary_embed = RotaryEmbedding(dim_head)
 
@@ -190,8 +192,10 @@ class DiT(nn.Module):
         # t: conditioning time, c: context (text + masked cond audio), x: noised input audio
         t = self.time_embed(time)
         text_embed, text_mask = self.text_embed(text, seq_len, drop_text=drop_text)
+        text_embed = self.text_norm(text_embed)
         x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond, text_mask=text_mask, audio_mask=audio_mask)
-
+        x = self.input_norm(x)
+        
         rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
         if self.long_skip_connection is not None:

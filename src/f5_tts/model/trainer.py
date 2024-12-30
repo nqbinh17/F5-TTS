@@ -17,9 +17,22 @@ from tqdm import tqdm
 from f5_tts.model import CFM
 from f5_tts.model.dataset import DynamicBatchSampler, collate_fn
 from f5_tts.model.utils import default, exists
-
+import torch.nn.init as init
+from torch import nn
 # trainer
 
+def initialize_weights(model):
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            if param.dim() > 1:
+                # Apply Xavier initialization for weight parameters
+                init.xavier_uniform_(param)
+            else:
+                # Xavier initialization is typically for layers with more than one dimension (like weights)
+                # So biases or other single-dimension parameters can be left to their default init or zeroed
+                init.zeros_(param)
+        else:
+            print(f'Skipped {name} as requires_grad is False')
 
 class Trainer:
     def __init__(
