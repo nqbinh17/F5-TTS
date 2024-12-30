@@ -245,8 +245,8 @@ class CFM(nn.Module):
         frac_lengths = torch.zeros((batch,), device=self.device).float().uniform_(*self.frac_lengths_mask)
         rand_span_mask = mask_from_frac_lengths(lens, frac_lengths)
 
-        if exists(mask):
-            rand_span_mask &= mask
+        if exists(audio_mask):
+            rand_span_mask &= audio_mask
 
         # mel is x1
         x1 = inp
