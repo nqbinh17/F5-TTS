@@ -168,24 +168,40 @@ class ConvPositionEmbedding(nn.Module):
     def __init__(self, dim, kernel_size=31, groups=16):
         super().__init__()
         assert kernel_size % 2 != 0
-        self.conv1d = nn.Sequential(
-            nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2),
-            nn.Mish(),
-            nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2),
-            nn.Mish(),
-        )
+
+        self.conv1 = nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2)
+        self.mish1 = nn.Mish()
+        self.conv2 = nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2)
+        self.mish2 = nn.Mish()
+
+        # self.conv1d = nn.Sequential(
+        #     nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2),
+        #     nn.Mish(),
+        #     nn.Conv1d(dim, dim, kernel_size, groups=groups, padding=kernel_size // 2),
+        #     nn.Mish(),
+        # )
 
     def forward(self, x: float["b n d"], mask: bool["b n"] | None = None):  # noqa: F722
-        if mask is not None:
-            mask = mask[..., None]
-            x = x.masked_fill(~mask, 0.0)
+
 
         x = x.permute(0, 2, 1)
-        x = self.conv1d(x)
+
+        if mask is not None:
+            x = x.masked_fill(~mask[None, ...], 0.0)
+
+        x = self.conv1(x)
+        x = self.mish1(x)
+
+        if mask is not None:
+            x = x.masked_fill(~mask[None, ...], 0.0)
+
+        x = self.conv2(x)
+        x = self.mish2(x)
+
         out = x.permute(0, 2, 1)
 
         if mask is not None:
-            out = out.masked_fill(~mask, 0.0)
+            out = out.masked_fill(~mask[..., None], 0.0)
 
         return out
 
