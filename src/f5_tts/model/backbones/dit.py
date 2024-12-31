@@ -117,7 +117,7 @@ class InputEmbedding(nn.Module):
             query_mask = audio_mask
         )
 
-        x = self.conv_pos_embed(x) + x
+        x = self.conv_pos_embed(x, mask = audio_mask) + x
         return x
 
 
