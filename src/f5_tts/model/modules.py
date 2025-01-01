@@ -278,7 +278,9 @@ class ConvNeXtV2Block(nn.Module):
         x = self.dwconv(x)
         x = x.transpose(1, 2)  # b d n -> b n d
         # Apply mask after convolution
-        x = x * mask.unsqueeze(-1)
+        if mask is not None:
+            x = x.masked_fill(mask.unsqueeze(-1) == 0, 0.0)
+            
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)

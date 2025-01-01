@@ -67,12 +67,14 @@ class TextEmbedding(nn.Module):
             pos_idx = get_pos_embed_indices(batch_start, seq_len, max_pos=self.precompute_max_pos)
             text_pos_embed = self.freqs_cis[pos_idx]
             text = text + text_pos_embed
-            text = text * text_mask.unsqueeze(-1)
+            if text_mask is not None:
+                text = text.mask_fill(text_mask.unsqueeze(-1) == 0, 0.0)
 
             # convnextv2 blocks
             for block in self.text_blocks:
                 text = block(text, text_mask)
-                text = text * text_mask.unsqueeze(-1)
+                if text_mask is not None:
+                    text = text.mask_fill(text_mask.unsqueeze(-1) == 0, 0.0)
 
         return text, text_mask
 
