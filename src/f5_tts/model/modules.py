@@ -187,13 +187,13 @@ class ConvPositionEmbedding(nn.Module):
         x = x.permute(0, 2, 1)
 
         if mask is not None:
-            x = x.masked_fill(~mask[None, ...], 0.0)
+            x = x.masked_fill(~mask.unsqueeze(1), 0.0)
 
         x = self.conv1(x)
         x = self.mish1(x)
 
         if mask is not None:
-            x = x.masked_fill(~mask[None, ...], 0.0)
+            x = x.masked_fill(~mask.unsqueeze(1), 0.0)
 
         x = self.conv2(x)
         x = self.mish2(x)
@@ -201,7 +201,7 @@ class ConvPositionEmbedding(nn.Module):
         out = x.permute(0, 2, 1)
 
         if mask is not None:
-            out = out.masked_fill(~mask[..., None], 0.0)
+            out = out.masked_fill(~mask.unsqueeze(-1), 0.0)
 
         return out
 
@@ -529,14 +529,20 @@ class AttnProcessor:
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         # mask. e.g. inference got a batch with different target durations, mask out the padding
-        if mask is not None:
-            attn_mask = mask
-            attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)  # 'b n -> b 1 1 n'
-            attn_mask = attn_mask.expand(batch_size, attn.heads, query.shape[-2], key.shape[-2])
-        else:
-            attn_mask = None
+        # if mask is not None:
+        #     attn_mask = mask
+        #     attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)  # 'b n -> b 1 1 n'
+        #     attn_mask = attn_mask.expand(batch_size, attn.heads, query.shape[-2], key.shape[-2])
+        # else:
+        #     attn_mask = None
 
-        x = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False)
+        attn_mask = None
+        if mask is not None:
+            attn_mask = createAudioTextMask(mask, mask).bool()
+
+        x = scaled_dot_product_cross_attention(query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False)
+
+        # x = F.scaled_dot_product_attention(query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False)
         x = x.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         x = x.to(query.dtype)
 
@@ -546,8 +552,7 @@ class AttnProcessor:
         x = attn.to_out[1](x)
 
         if mask is not None:
-            mask = mask.unsqueeze(-1)
-            x = x.masked_fill(~mask, 0.0)
+            x = x.masked_fill(~mask.unsqueeze(-1), 0.0)
 
         return x
 
