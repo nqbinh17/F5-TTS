@@ -68,13 +68,13 @@ class TextEmbedding(nn.Module):
             text_pos_embed = self.freqs_cis[pos_idx]
             text = text + text_pos_embed
             if text_mask is not None:
-                text = text.mask_fill(text_mask.unsqueeze(-1) == 0, 0.0)
+                text = text.masked_fill(text_mask.unsqueeze(-1) == 0, 0.0)
 
             # convnextv2 blocks
             for block in self.text_blocks:
                 text = block(text, text_mask)
                 if text_mask is not None:
-                    text = text.mask_fill(text_mask.unsqueeze(-1) == 0, 0.0)
+                    text = text.masked_fill(text_mask.unsqueeze(-1) == 0, 0.0)
 
         return text, text_mask
 
