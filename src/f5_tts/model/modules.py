@@ -280,7 +280,7 @@ class ConvNeXtV2Block(nn.Module):
         # Apply mask after convolution
         if mask is not None:
             x = x.masked_fill(mask.unsqueeze(-1) == 0, 0.0)
-            
+
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
@@ -430,25 +430,28 @@ def scaled_dot_product_cross_attention(query, key, value, attn_mask=None, dropou
         is_causal=False, scale=None, enable_gqa=False) -> torch.Tensor:
     B, L, S = query.size(0), query.size(-2), key.size(-2)
     scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-    attn_bias = torch.zeros(B, L, S, dtype=query.dtype).to(query.device)
-    if is_causal:
-        assert attn_mask is None
-        temp_mask = torch.ones(B, L, S, dtype=torch.bool).tril(diagonal=0)
-        attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
-        attn_bias.to(query.dtype)
+    # attn_bias = torch.zeros(B, L, S, dtype=query.dtype).to(query.device)
+    # if is_causal:
+    #     assert attn_mask is None
+    #     temp_mask = torch.ones(B, L, S, dtype=torch.bool).tril(diagonal=0)
+    #     attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+    #     attn_bias.to(query.dtype)
 
-    if attn_mask is not None:
-        if attn_mask.dtype == torch.bool:
-            attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
-        else:
-            attn_bias += attn_mask
+    # if attn_mask is not None:
+    #     if attn_mask.dtype == torch.bool:
+    #         attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+    #     else:
+    #         attn_bias += attn_mask
 
     if enable_gqa:
         key = key.repeat_interleave(query.size(-3)//key.size(-3), -3)
         value = value.repeat_interleave(query.size(-3)//value.size(-3), -3)
 
     attn_weight = query @ key.transpose(-2, -1) * scale_factor
-    attn_weight += attn_bias.unsqueeze(1)
+    if attn_mask is not None:
+        attn_weight = attn_weight.masked_fill(attn_mask.unsqueeze(1) == 0, -1e9)
+    
+    # attn_weight += attn_bias.unsqueeze(1)
     attn_weight = torch.softmax(attn_weight, dim=-1)
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
     return attn_weight @ value
