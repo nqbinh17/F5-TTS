@@ -4,7 +4,7 @@ hydra:
     
 datasets:
   name: Emilia_ZH_EN
-  batch_size_per_gpu: 8  # 8 GPUs, 8 * 38400 = 307200
+  batch_size_per_gpu: 4  # 8 GPUs, 8 * 38400 = 307200
   batch_size_type: sample  # "frame" or "sample"
   max_samples: 32  # max sequences per batch if use frame-wise batch_size. we set 32 for small models, 64 for base models
   num_workers: 16
@@ -14,7 +14,7 @@ optim:
   epochs: 15
   learning_rate: 7.5e-5
   num_warmup_updates: 20000  # warmup steps
-  grad_accumulation_steps: 1  # note: updates = steps / grad_accumulation_steps
+  grad_accumulation_steps: 2  # note: updates = steps / grad_accumulation_steps
   max_grad_norm: 1.0  # gradient clipping
   bnb_optimizer: False  # use bnb 8bit AdamW optimizer or not
 
@@ -43,6 +43,6 @@ model:
 
 ckpts:
   logger: wandb  # wandb | tensorboard | None
-  save_per_updates: 50000  # save checkpoint per steps
-  last_per_steps: 5000  # save last checkpoint per steps
+  save_per_updates: 100  # save checkpoint per steps
+  last_per_steps: 200  # save last checkpoint per steps
   save_dir: ckpts/${model.name}_${model.mel_spec.mel_spec_type}_${model.tokenizer}_${datasets.name}

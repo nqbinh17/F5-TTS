@@ -56,6 +56,13 @@ class AudioDataset(Dataset):
         self.augmentation = augmentation
 
 
+    def get_frame_len(self, index):
+        if (
+            self.durations is not None
+        ):  # Please make sure the separately provided durations are correct, otherwise 99.99% OOM
+            return self.durations[index] * self.target_sample_rate / self.hop_length
+        return self.data[index]["duration"] * self.target_sample_rate / self.hop_length
+
     def __len__(self):
         return len(self.dataset)
                 
@@ -137,6 +144,9 @@ class AudioDataset(Dataset):
         datapoint = self.processData(datapoint)
 
         mel_spec = torch.Tensor(datapoint['mel_spec'])
+        if mel_spec.size(1) > 2000:
+            return self.__getitem__((index + 1) % len(self.data))
+        
         text = datapoint['text']
 
         if self.augmentation and len(self.groupSpeakerChapter[key]) > 2:
