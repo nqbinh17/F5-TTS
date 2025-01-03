@@ -183,7 +183,6 @@ class ConvPositionEmbedding(nn.Module):
 
     def forward(self, x: float["b n d"], mask: bool["b n"] | None = None):  # noqa: F722
 
-
         x = x.permute(0, 2, 1)
 
         if mask is not None:
@@ -437,7 +436,8 @@ def scaled_dot_product_cross_attention(query, key, value, attn_mask=None, dropou
 
     attn_weight = query @ key.transpose(-2, -1) * scale_factor
     if attn_mask is not None:
-        attn_weight = attn_weight.masked_fill(attn_mask.unsqueeze(1) == 0, -1e9)
+        _MASKING_VALUE = -1e9 if attn_weight.dtype == torch.float32 else -1e4
+        attn_weight = attn_weight.masked_fill(attn_mask.unsqueeze(1) == 0, _MASKING_VALUE)
     
     attn_weight = torch.softmax(attn_weight, dim=-1)
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)

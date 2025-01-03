@@ -359,8 +359,6 @@ class Trainer:
                         torchaudio.save(f"{log_samples_path}/step_{global_step}_gen.wav", gen_audio, target_sample_rate)
                         torchaudio.save(f"{log_samples_path}/step_{global_step}_ref.wav", ref_audio, target_sample_rate)
 
-                if global_step % self.last_per_steps == 0:
-                    self.save_checkpoint(global_step, last=True)
 
         self.save_checkpoint(global_step, last=True)
 

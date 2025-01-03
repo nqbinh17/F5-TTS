@@ -40,7 +40,7 @@ class AudioDataset(Dataset):
 
         def buffer(i):
             if i < 10:
-                return f"{i}"
+                return f"0{i}"
             return str(i)
 
         datafiles = [f"clean/train.100-000{buffer(i)}-of-00024.parquet" for i in range(total_file)]
