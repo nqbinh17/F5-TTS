@@ -35,10 +35,20 @@ class AudioDataset(Dataset):
         mel_spec_type="vocos",
         augmentation=False,
     ):
+        
+        total_file = 24
+
+        def buffer(i):
+            if i < 10:
+                return f"{i}"
+            return str(i)
+
+        datafiles = [f"clean/train.100-000{buffer(i)}-of-00024.parquet" for i in range(total_file)]
+
         self.dataset = datasets.load_dataset(
-            dataset_name,
+            "fixie-ai/librispeech_asr",
             data_files=datafiles,
-            split=split
+            split='train'
         )
 
         self.target_sample_rate = target_sample_rate
@@ -137,15 +147,13 @@ class AudioDataset(Dataset):
 
         sample_rate = datapoint["audio"]["sampling_rate"]
         duration = datapoint['audio']['array'].shape[-1] / sample_rate
-        if duration < 0.3:
-            return self.__getitem__((index + 1) % len(self.data))
         
         key = self.getSpeakerChapterKey(datapoint)
         datapoint = self.processData(datapoint)
 
         mel_spec = torch.Tensor(datapoint['mel_spec'])
-        if mel_spec.size(1) > 2000:
-            return self.__getitem__((index + 1) % len(self.data))
+        if duration < 0.3 or mel_spec.size(1) > 2048:
+            return self.__getitem__((idx + 1) % len(self.dataset))
         
         text = datapoint['text']
 
