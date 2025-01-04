@@ -58,6 +58,7 @@ def main(cfg):
         max_samples=cfg.datasets.max_samples,
         grad_accumulation_steps=cfg.optim.grad_accumulation_steps,
         max_grad_norm=cfg.optim.max_grad_norm,
+        weight_decay=cfg.optim.weight_decay,
         logger=cfg.ckpts.logger,
         wandb_project="CFM-TTS",
         wandb_run_name=exp_name,
