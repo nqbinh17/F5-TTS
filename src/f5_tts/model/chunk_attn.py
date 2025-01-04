@@ -60,7 +60,10 @@ class ChunkLlamaRotaryEmbedding(nn.Module):
         self.scaling_factor = scaling_factor
         self.max_position_embeddings = max_position_embeddings
         self.base = base
-        
+
+        self.chunk_size = max_position_embeddings * 3 // 4
+        self.local_window = max_position_embeddings // 8
+        self.chunk_len = self.chunk_size - self.local_window
 
         # Build here to make `torch.jit.trace` work.
         self._set_cos_sin_cache(
@@ -76,12 +79,11 @@ class ChunkLlamaRotaryEmbedding(nn.Module):
         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-        chunk_len = chunk_size - local_window
-        q_t = torch.arange(chunk_len, device=device, dtype=self.inv_freq.dtype) / self.scaling_factor
-        qc_t = (torch.arange(chunk_len, device=device, dtype=self.inv_freq.dtype) + chunk_len).clamp(
+        q_t = torch.arange(self.chunk_len, device=device, dtype=self.inv_freq.dtype) / self.scaling_factor
+        qc_t = (torch.arange(self.chunk_len, device=device, dtype=self.inv_freq.dtype) + self.chunk_len).clamp(
             max=chunk_size) / self.scaling_factor
         k_t = (torch.arange(seq_len + MAX_NEW_TOKENS, device=device,
-                            dtype=self.inv_freq.dtype) % chunk_len) / self.scaling_factor
+                            dtype=self.inv_freq.dtype) % self.chunk_len) / self.scaling_factor
 
         q_freqs = torch.outer(q_t, self.inv_freq)  # seq_len x dim/2
         qc_freqs = torch.outer(qc_t, self.inv_freq)
