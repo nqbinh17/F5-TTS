@@ -81,7 +81,7 @@ class ChunkLlamaRotaryEmbedding(nn.Module):
 
         q_t = torch.arange(self.chunk_len, device=device, dtype=self.inv_freq.dtype) / self.scaling_factor
         qc_t = (torch.arange(self.chunk_len, device=device, dtype=self.inv_freq.dtype) + self.chunk_len).clamp(
-            max=chunk_size) / self.scaling_factor
+            max=self.chunk_size) / self.scaling_factor
         k_t = (torch.arange(seq_len + MAX_NEW_TOKENS, device=device,
                             dtype=self.inv_freq.dtype) % self.chunk_len) / self.scaling_factor
 
@@ -155,6 +155,10 @@ class ChunkLlamaAttention(nn.Module):
 
         self.rotary_emb = ChunkLlamaRotaryEmbedding(dim = self.head_dim, 
                                                     max_position_embeddings=max_position_embeddings)
+        
+        self.chunk_size = max_position_embeddings * 3 // 4
+        self.local_window = max_position_embeddings // 8
+        self.chunk_len = self.chunk_size - self.local_window
 
     def forward(
             self,
@@ -167,7 +171,6 @@ class ChunkLlamaAttention(nn.Module):
             **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
-        chunk_len = chunk_size - local_window
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
@@ -187,7 +190,7 @@ class ChunkLlamaAttention(nn.Module):
         # need to chunk query states
         q_cos, q_sin, qc_cos, qc_sin, k_cos, k_sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         key_states = apply_rotary_pos_emb(key_states, k_cos, k_sin, position_ids)
-        position_ids = position_ids % chunk_len
+        position_ids = position_ids % self.chunk_len
 
         if past_key_value is not None:
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs=None)
@@ -197,17 +200,17 @@ class ChunkLlamaAttention(nn.Module):
 
         flash_results = []
         if not has_kv_cache:
-            q_states_intra = apply_rotary_pos_emb(query_states[:, :, :chunk_len, :], q_cos, q_sin,
-                                                position_ids[:, :chunk_len])
-            k_states_prev = key_states[:, :, :chunk_len, :]
-            v_states_prev = value_states[:, :, :chunk_len, :]
+            q_states_intra = apply_rotary_pos_emb(query_states[:, :, :self.chunk_len, :], q_cos, q_sin,
+                                                position_ids[:, :self.chunk_len])
+            k_states_prev = key_states[:, :, :self.chunk_len, :]
+            v_states_prev = value_states[:, :, :self.chunk_len, :]
             flash_results.append(do_flash_attn(q_states_intra, k_states_prev, v_states_prev))
-            remain_len = kv_seq_len - chunk_len
+            remain_len = kv_seq_len - self.chunk_len
 
             while remain_len > 0:
                 flash_per_chunk = []
                 begin = kv_seq_len - remain_len
-                curr_chunk_len = min(chunk_len, remain_len)
+                curr_chunk_len = min(self.chunk_len, remain_len)
                 end = begin + curr_chunk_len
 
                 q_states_intra = apply_rotary_pos_emb(query_states[:, :, begin:end, :], q_cos, q_sin,
@@ -224,7 +227,7 @@ class ChunkLlamaAttention(nn.Module):
                 if begin - (k_states_prev.size(-2)) > 0:
                     prev_len = k_states_prev.size(-2)
                     q_states_inter = apply_rotary_pos_emb(query_states[:, :, begin:end, :], qc_cos, qc_sin,
-                                                        position_ids[:, chunk_len - 1][:, None].repeat(1, curr_chunk_len))
+                                                        position_ids[:, self.chunk_len - 1][:, None].repeat(1, curr_chunk_len))
                     k_states_inter = key_states[:, :, :begin - prev_len, :]
                     v_states_inter = value_states[:, :, :begin - prev_len, :]
                     flash_per_chunk.append(do_flash_attn(q_states_inter, k_states_inter, v_states_inter, False))
@@ -232,13 +235,13 @@ class ChunkLlamaAttention(nn.Module):
                 flash_results.append(flash_per_chunk)
                 k_states_prev = k_states_intra
                 v_states_prev = v_states_intra
-                remain_len = remain_len - chunk_len
+                remain_len = remain_len - self.chunk_len
 
             attn_output = merge_attn_outputs(flash_results)
         else:
-            chunk_num_curr = (kv_seq_len - 1) // chunk_len
+            chunk_num_curr = (kv_seq_len - 1) // self.chunk_len
             q_states_intra = apply_rotary_pos_emb(query_states, q_cos, q_sin, position_ids)
-            k_states_intra = key_states[:, :, chunk_len * chunk_num_curr:kv_seq_len, :]
+            k_states_intra = key_states[:, :, self.chunk_len * chunk_num_curr:kv_seq_len, :]
             attn_weights = torch.matmul(q_states_intra, k_states_intra.transpose(2, 3)) / math.sqrt(
                 self.head_dim)
             attn_scores = [attn_weights]
@@ -246,15 +249,15 @@ class ChunkLlamaAttention(nn.Module):
             if chunk_num_curr >= 1:
                 q_states_succ = apply_rotary_pos_emb(query_states, qc_cos, qc_sin, position_ids)
 
-                k_states_succ = key_states[:, :, chunk_len * (chunk_num_curr - 1):chunk_len * chunk_num_curr, :]
+                k_states_succ = key_states[:, :, self.chunk_len * (chunk_num_curr - 1):self.chunk_len * chunk_num_curr, :]
                 attn_weights = torch.matmul(q_states_succ, k_states_succ.transpose(2, 3)) / math.sqrt(
                     self.head_dim)
                 attn_scores = [attn_weights] + attn_scores
 
             if chunk_num_curr >= 2:
                 q_states_inter = apply_rotary_pos_emb(query_states, qc_cos, qc_sin,
-                                                    torch.tensor([[chunk_len - 1]], device=query_states.device))
-                k_states_inter = key_states[:, :, :chunk_len * (chunk_num_curr - 1), :]
+                                                    torch.tensor([[self.chunk_len - 1]], device=query_states.device))
+                k_states_inter = key_states[:, :, :self.chunk_len * (chunk_num_curr - 1), :]
                 attn_weights = torch.matmul(q_states_inter, k_states_inter.transpose(2, 3)) / math.sqrt(
                     self.head_dim)
                 attn_scores = [attn_weights] + attn_scores
