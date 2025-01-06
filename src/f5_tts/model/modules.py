@@ -18,7 +18,7 @@ import torchaudio
 from librosa.filters import mel as librosa_mel_fn
 from torch import nn
 from x_transformers.x_transformers import apply_rotary_pos_emb
-
+from f5_tts.model.chunk_attn import ChunkLlamaAttention
 
 # raw wav to mel spec
 
@@ -640,27 +640,52 @@ class JointAttnProcessor:
 
 
 class DiTBlock(nn.Module):
-    def __init__(self, dim, heads, dim_head, ff_mult=4, dropout=0.1):
+    def __init__(self, 
+                 dim, 
+                 heads, 
+                 dim_head, 
+                 ff_mult=4, 
+                 dropout=0.1, 
+                 num_key_value_heads = 4, 
+                 attn_implementation = 'default', 
+                 layer_idx = 0):
+        
         super().__init__()
 
         self.attn_norm = AdaLayerNormZero(dim)
-        self.attn = Attention(
-            processor=AttnProcessor(),
-            dim=dim,
-            heads=heads,
-            dim_head=dim_head,
-            dropout=dropout,
-        )
+        self.attn_implementation = attn_implementation
+        if attn_implementation == 'default':
+            self.attn = Attention(
+                processor=AttnProcessor(),
+                dim=dim,
+                heads=heads,
+                dim_head=dim_head,
+                dropout=dropout,
+            )
+        elif attn_implementation == 'chunk_attn':
+            self.attn = ChunkLlamaAttention(
+                hidden_size=dim,
+                num_attention_heads=heads,
+                num_key_value_heads=num_key_value_heads,
+                layer_idx=layer_idx,
+                attention_dropout=dropout
+            )
+            
+        else:
+            raise ValueError(f"attn_implementation: {attn_implementation} doesn't support.")
 
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
-    def forward(self, x, t, mask=None, rope=None):  # x: noised input, t: time embedding
+    def forward(self, x, t, mask=None, rope=None, position_ids=None):  # x: noised input, t: time embedding
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
         # attention
-        attn_output = self.attn(x=norm, mask=mask, rope=rope)
+        if self.attn_implementation == 'default':
+            attn_output = self.attn(x=norm, mask=mask, rope=rope)
+        elif self.attn_implementation == 'chunk_attn':
+            attn_output = self.attn(hidden_states=norm, attention_mask=mask, position_ids = position_ids)
 
         # process attention output for input x
         x = x + gate_msa.unsqueeze(1) * attn_output

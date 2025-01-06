@@ -142,6 +142,7 @@ class DiT(nn.Module):
         conv_layers=0,
         long_skip_connection=False,
         checkpoint_activations=False,
+        attn_implementation = 'default'
     ):
         super().__init__()
 
@@ -157,9 +158,13 @@ class DiT(nn.Module):
 
         self.dim = dim
         self.depth = depth
+        self.attn_implementation = attn_implementation
 
         self.transformer_blocks = nn.ModuleList(
-            [DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout) for _ in range(depth)]
+            [
+                DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout, attn_implementation = attn_implementation, layer_idx = layer_idx) 
+                for layer_idx in range(depth)
+            ]
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
 
@@ -203,11 +208,28 @@ class DiT(nn.Module):
         if self.long_skip_connection is not None:
             residual = x
 
+        
+        position_ids = torch.arange(
+            0, x.shape[1], device=x.device
+        ).unsqueeze(0)
+
+        attn_mask = audio_mask
+        if self.attn_implementation == 'chunk_attn':
+            attn_matrix = createAudioTextMask(audio_mask, audio_mask)
+            attn_matrix = attn_matrix.unsqueeze(1) # for broadcast multi-head attention
+
+            attn_mask = torch.zeros_like(attn_matrix, dtype = x.dtype, device = x.device)
+
+            _MASKING_VALUE = -1e9 if x.dtype == torch.float32 else -1e4
+
+            attn_mask = attn_mask.masked_fill(attn_matrix.unsqueeze(1) == 0, _MASKING_VALUE)
+
+
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, audio_mask, rope)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, attn_mask, rope, position_ids)
             else:
-                x = block(x, t, mask=audio_mask, rope=rope)
+                x = block(x, t, mask=attn_mask, rope=rope, position_ids=position_ids)
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))

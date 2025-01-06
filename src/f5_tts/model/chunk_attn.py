@@ -44,10 +44,52 @@ def merge_attn_outputs(flash_results):
         attn_outputs_all.append(attn_outputs.sum(dim=0))
     return torch.cat(attn_outputs_all, dim=2)
 
+def eager_attention_forward(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    causal: bool = False
+):
+    heads, head_dim = query_states.size(1), query_states.size(3)
+    scaling = (heads * head_dim) ** -0.5
+
+    attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * scaling
+    if causal is True:
+        L, S = query_states.size(-2), key_states.size(-2)
+        attn_bias = torch.zeros(L, S, dtype=query_states.dtype)
+        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+
+        _MASKING_VALUE = -1e9 if query_states.dtype == torch.float32 else -1e4
+
+        attn_bias.masked_fill_(temp_mask.logical_not(), _MASKING_VALUE)
+        attn_bias.to(query_states.dtype)
+
+        attn_weights += attn_bias
+        
+    attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+    attn_output = torch.matmul(attn_weights, value_states)
+    attn_output = attn_output.transpose(1, 2).contiguous()
+
+    return attn_output, attn_weights
+
+def supports_flash_attention(device_id):
+    """Check if a GPU supports FlashAttention."""
+    major, minor = torch.cuda.get_device_capability(device_id)
+    
+    # Check if the GPU architecture is Ampere (SM 8.x) or newer (SM 9.0)
+    is_sm8x = major == 8 and minor >= 0
+    is_sm90 = major == 9 and minor == 0
+
+    return is_sm8x or is_sm90
+
 def do_flash_attn(query_states, key_states, value_states, causal=True):
     # flash_attention
-    output, softmax_lse, _ = flash_attn_func(query_states.transpose(1, 2), key_states.transpose(1, 2),
-                                             value_states.transpose(1, 2), causal=causal, return_attn_probs=True)
+    if supports_flash_attention():
+        output, softmax_lse, _ = flash_attn_func(query_states.transpose(1, 2), key_states.transpose(1, 2),
+                                                value_states.transpose(1, 2), causal=causal, return_attn_probs=True)
+    else:
+        output, softmax_lse = eager_attention_forward(query_states, key_states, value_states, causal = causal)
+
     return output.transpose(1, 2), softmax_lse
 
 
@@ -127,7 +169,7 @@ class ChunkLlamaAttention(nn.Module):
                  layer_idx: int,
                  attention_dropout: float = 0.0,
                  max_position_embeddings: int = 32768
-                 ):
+                ):
         super().__init__()
         self.layer_idx = layer_idx
         self.hidden_size = hidden_size
