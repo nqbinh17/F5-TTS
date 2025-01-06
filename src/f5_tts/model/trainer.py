@@ -315,6 +315,11 @@ class Trainer:
 
                     self.optimizer.step()
                     self.scheduler.step()
+                    # Try to prevent memory leaks
+                    if global_step % 100 == 0 and self.accelerator.is_local_main_process:
+                        gc.collect()
+                        torch.cuda.empty_cache()
+
                     self.optimizer.zero_grad()
 
                 if self.is_main and self.accelerator.sync_gradients:
@@ -360,6 +365,8 @@ class Trainer:
                         torchaudio.save(f"{log_samples_path}/step_{global_step}_gen.wav", gen_audio, target_sample_rate)
                         torchaudio.save(f"{log_samples_path}/step_{global_step}_ref.wav", ref_audio, target_sample_rate)
 
+                # Try to prevent memory leaks
+                del text_inputs, mel_spec, mel_lengths, audio_mask
 
         self.save_checkpoint(global_step, last=True)
 
