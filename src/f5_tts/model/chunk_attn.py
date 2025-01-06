@@ -74,6 +74,8 @@ def eager_attention_forward(
 
 def supports_flash_attention(device_id):
     """Check if a GPU supports FlashAttention."""
+    if not torch.cuda.is_available(): return False
+
     major, minor = torch.cuda.get_device_capability(device_id)
     
     # Check if the GPU architecture is Ampere (SM 8.x) or newer (SM 9.0)
@@ -84,7 +86,7 @@ def supports_flash_attention(device_id):
 
 def do_flash_attn(query_states, key_states, value_states, causal=True):
     # flash_attention
-    if supports_flash_attention():
+    if supports_flash_attention(query_states.device):
         output, softmax_lse, _ = flash_attn_func(query_states.transpose(1, 2), key_states.transpose(1, 2),
                                                 value_states.transpose(1, 2), causal=causal, return_attn_probs=True)
     else:

@@ -685,7 +685,7 @@ class DiTBlock(nn.Module):
         if self.attn_implementation == 'default':
             attn_output = self.attn(x=norm, mask=mask, rope=rope)
         elif self.attn_implementation == 'chunk_attn':
-            attn_output = self.attn(hidden_states=norm, attention_mask=mask, position_ids = position_ids)
+            attn_output, _, _ = self.attn(hidden_states=norm, attention_mask=mask, position_ids = position_ids)
 
         # process attention output for input x
         x = x + gate_msa.unsqueeze(1) * attn_output

@@ -138,6 +138,7 @@ class DiT(nn.Module):
         ff_mult=4,
         mel_dim=100,
         text_num_embeds=256,
+        num_key_value_heads = 4,
         text_dim=None,
         conv_layers=0,
         long_skip_connection=False,
@@ -162,7 +163,10 @@ class DiT(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             [
-                DiTBlock(dim=dim, heads=heads, dim_head=dim_head, ff_mult=ff_mult, dropout=dropout, attn_implementation = attn_implementation, layer_idx = layer_idx) 
+                DiTBlock(dim=dim, heads=heads, 
+                         dim_head=dim_head, ff_mult=ff_mult, 
+                         dropout=dropout, attn_implementation=attn_implementation, 
+                         layer_idx=layer_idx, num_key_value_heads=num_key_value_heads) 
                 for layer_idx in range(depth)
             ]
         )
