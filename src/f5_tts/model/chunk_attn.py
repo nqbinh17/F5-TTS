@@ -56,8 +56,8 @@ def eager_attention_forward(
     attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * scaling
     if causal is True:
         L, S = query_states.size(-2), key_states.size(-2)
-        attn_bias = torch.zeros(L, S, dtype=query_states.dtype)
-        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+        attn_bias = torch.zeros(L, S, dtype=query_states.dtype, device = query_states.device)
+        temp_mask = torch.ones(L, S, dtype=torch.bool, device = query_states.device).tril(diagonal=0)
 
         _MASKING_VALUE = -1e9 if query_states.dtype == torch.float32 else -1e4
 
@@ -197,11 +197,8 @@ class ChunkLlamaAttention(nn.Module):
             num_attention_heads * self.head_dim, hidden_size, bias=False
         )
 
-        self.rotary_emb = ChunkLlamaRotaryEmbedding(dim = self.head_dim, 
-                                                    max_position_embeddings=max_position_embeddings)
-        
-        self.chunk_size = max_position_embeddings * 3 // 4
-        self.local_window = max_position_embeddings // 8
+        self.chunk_size = 2048
+        self.local_window = 384
         self.chunk_len = self.chunk_size - self.local_window
 
     def forward(
@@ -210,6 +207,7 @@ class ChunkLlamaAttention(nn.Module):
             attention_mask: Optional[torch.LongTensor] = None,
             position_ids: Optional[torch.LongTensor] = None,
             past_key_value: Optional[Cache] = None,
+            rotary_embed: nn.Module = None,
             output_attentions: bool = False,
             use_cache: bool = False,
             **kwargs,
@@ -232,7 +230,7 @@ class ChunkLlamaAttention(nn.Module):
         has_kv_cache = q_seq_len != kv_seq_len
         # covert to b x head x len x h
         # need to chunk query states
-        q_cos, q_sin, qc_cos, qc_sin, k_cos, k_sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        q_cos, q_sin, qc_cos, qc_sin, k_cos, k_sin = rotary_embed(value_states, seq_len=kv_seq_len)
         key_states = apply_rotary_pos_emb(key_states, k_cos, k_sin, position_ids)
         position_ids = position_ids % self.chunk_len
 

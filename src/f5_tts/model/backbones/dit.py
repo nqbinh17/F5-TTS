@@ -27,7 +27,7 @@ from f5_tts.model.modules import (
     CrossAttnProcessor,
     createAudioTextMask
 )
-
+from f5_tts.model.chunk_attn import ChunkLlamaRotaryEmbedding
 
 # Text embedding
 
@@ -155,11 +155,15 @@ class DiT(nn.Module):
         self.input_embed = InputEmbedding(mel_dim, text_dim, dim, heads=heads, dim_head=dim_head)
         self.input_norm = nn.LayerNorm(dim)
 
-        self.rotary_embed = RotaryEmbedding(dim_head)
 
         self.dim = dim
         self.depth = depth
         self.attn_implementation = attn_implementation
+
+        if attn_implementation == 'default':
+            self.rotary_embed = RotaryEmbedding(dim_head)
+        else:
+            self.rotary_embed = ChunkLlamaRotaryEmbedding(dim = dim_head)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -207,12 +211,13 @@ class DiT(nn.Module):
         x = self.input_embed(x, cond, text_embed, drop_audio_cond=drop_audio_cond, text_mask=text_mask, audio_mask=audio_mask)
         x = self.input_norm(x)
 
-        rope = self.rotary_embed.forward_from_seq_len(seq_len)
+        rope = None
+        if self.attn_implementation == 'default': 
+            rope = self.rotary_embed.forward_from_seq_len(seq_len)
 
         if self.long_skip_connection is not None:
             residual = x
 
-        
         position_ids = torch.arange(
             0, x.shape[1], device=x.device
         ).unsqueeze(0)
@@ -231,9 +236,9 @@ class DiT(nn.Module):
 
         for block in self.transformer_blocks:
             if self.checkpoint_activations:
-                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, attn_mask, rope, position_ids)
+                x = torch.utils.checkpoint.checkpoint(self.ckpt_wrapper(block), x, t, attn_mask, rope, position_ids, self.rotary_embed)
             else:
-                x = block(x, t, mask=attn_mask, rope=rope, position_ids=position_ids)
+                x = block(x, t, mask=attn_mask, rope=rope, position_ids=position_ids, rotary_embed=self.rotary_embed)
 
         if self.long_skip_connection is not None:
             x = self.long_skip_connection(torch.cat((x, residual), dim=-1))

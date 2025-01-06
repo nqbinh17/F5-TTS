@@ -677,7 +677,7 @@ class DiTBlock(nn.Module):
         self.ff_norm = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         self.ff = FeedForward(dim=dim, mult=ff_mult, dropout=dropout, approximate="tanh")
 
-    def forward(self, x, t, mask=None, rope=None, position_ids=None):  # x: noised input, t: time embedding
+    def forward(self, x, t, mask=None, rope=None, position_ids=None, rotary_embed = None):  # x: noised input, t: time embedding
         # pre-norm & modulation for attention input
         norm, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.attn_norm(x, emb=t)
 
@@ -685,7 +685,10 @@ class DiTBlock(nn.Module):
         if self.attn_implementation == 'default':
             attn_output = self.attn(x=norm, mask=mask, rope=rope)
         elif self.attn_implementation == 'chunk_attn':
-            attn_output, _, _ = self.attn(hidden_states=norm, attention_mask=mask, position_ids = position_ids)
+            attn_output, _, _ = self.attn(hidden_states=norm, 
+                                          attention_mask=mask, 
+                                          position_ids = position_ids, 
+                                          rotary_embed = rotary_embed)
 
         # process attention output for input x
         x = x + gate_msa.unsqueeze(1) * attn_output

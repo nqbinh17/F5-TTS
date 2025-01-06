@@ -34,6 +34,7 @@ class AudioDataset(Dataset):
         win_length=1024,
         mel_spec_type="vocos",
         augmentation=False,
+        max_spec_lengths=2048
     ):
         
         total_file = 24
@@ -64,6 +65,7 @@ class AudioDataset(Dataset):
         )
         self.preprocessing()
         self.augmentation = augmentation
+        self.max_spec_lengths = max_spec_lengths
 
 
     def get_frame_len(self, index):
@@ -152,7 +154,7 @@ class AudioDataset(Dataset):
         datapoint = self.processData(datapoint)
 
         mel_spec = torch.Tensor(datapoint['mel_spec'])
-        if duration < 0.3 or mel_spec.size(1) > 2048:
+        if duration < 0.3 or mel_spec.size(1) > self.max_spec_lengths:
             return self.__getitem__((idx + 1) % len(self.dataset))
         
         text = datapoint['text']
@@ -401,6 +403,7 @@ def load_dataset(
     audio_type: str = "raw",
     mel_spec_module: nn.Module | None = None,
     mel_spec_kwargs: dict = dict(),
+    max_spec_lengths: int = 2048
 ) -> CustomDataset | HFDataset:
     """
     dataset_type    - "CustomDataset" if you want to use tokenizer name and default data path to load for train_dataset
@@ -455,7 +458,7 @@ def load_dataset(
         )
 
     elif dataset_type == 'AudioDataset':
-        train_dataset = AudioDataset(**mel_spec_kwargs)
+        train_dataset = AudioDataset(**mel_spec_kwargs, max_spec_lengths=max_spec_lengths)
 
     return train_dataset
 
