@@ -13,8 +13,8 @@ from random import random
 from typing import Callable
 
 import torch
-import torch.nn.functional as F
 from torch import nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torchdiffeq import odeint
 
@@ -27,10 +27,12 @@ from f5_tts.model.utils import (
     list_str_to_tensor,
     mask_from_frac_lengths,
 )
-import torch.nn.init as init
+from f5_tts.model.config import TTSConfig
+from transformers.modeling_utils import PreTrainedModel
 
+class CFM(PreTrainedModel):
+    config_class = TTSConfig
 
-class CFM(nn.Module):
     def __init__(
         self,
         transformer: nn.Module,
