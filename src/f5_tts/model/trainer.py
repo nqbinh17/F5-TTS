@@ -389,6 +389,6 @@ class Trainer:
                 repo_id=repo_id,
                 repo_type="model",  # or "model" if it's a model repository
             )
-            print(f"Sucessfully save to repo: {repo_id}")
+            print(f"Successfully save to repo: {repo_id}")
         except:
             pass

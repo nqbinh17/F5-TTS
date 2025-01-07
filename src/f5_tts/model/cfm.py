@@ -29,7 +29,7 @@ from f5_tts.model.utils import (
 )
 from f5_tts.model.config import TTSConfig
 from transformers.modeling_utils import PreTrainedModel
-from f5_tts.model import DiT
+from f5_tts.model.backbones.dit import DiT
 
 class CFM(PreTrainedModel):
     config_class = TTSConfig
@@ -68,7 +68,7 @@ class CFM(PreTrainedModel):
             dim_head=dim_head,
             dropout=0.1,
             ff_mult=config.intermediate_scale,
-            mel_dim=config.hidden_size,
+            mel_dim=config.n_mel_channels,
             text_num_embeds=config.vocab_size,
             num_key_value_heads = config.num_key_value_heads,
             text_dim=config.text_hidden_size,
