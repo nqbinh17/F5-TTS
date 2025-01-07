@@ -143,7 +143,9 @@ class DiT(nn.Module):
         conv_layers=0,
         long_skip_connection=False,
         checkpoint_activations=False,
-        attn_implementation = 'default'
+        attn_implementation = 'default',
+        chunk_size=2048,
+        local_window=384
     ):
         super().__init__()
 
@@ -170,7 +172,8 @@ class DiT(nn.Module):
                 DiTBlock(dim=dim, heads=heads, 
                          dim_head=dim_head, ff_mult=ff_mult, 
                          dropout=dropout, attn_implementation=attn_implementation, 
-                         layer_idx=layer_idx, num_key_value_heads=num_key_value_heads) 
+                         layer_idx=layer_idx, num_key_value_heads=num_key_value_heads,
+                         chunk_size=chunk_size, local_window=local_window) 
                 for layer_idx in range(depth)
             ]
         )

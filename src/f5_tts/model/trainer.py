@@ -17,14 +17,15 @@ from tqdm import tqdm
 from f5_tts.model import CFM
 from f5_tts.model.dataset import DynamicBatchSampler, collate_fn
 from f5_tts.model.utils import default, exists
-import torch.nn.init as init
-from torch import nn
+import huggingface_hub
+import json
 # trainer
 
 class Trainer:
     def __init__(
         self,
         model: CFM,
+        cfg,
         epochs,
         learning_rate,
         num_warmup_updates=20000,
@@ -52,6 +53,8 @@ class Trainer:
         local_vocoder_path: str = "",  # local vocoder path
     ):
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+
+        self.cfg = cfg
 
         if logger == "wandb" and not wandb.api.api_key:
             logger = None
@@ -371,3 +374,21 @@ class Trainer:
         self.save_checkpoint(global_step, last=True)
 
         self.accelerator.end_training()
+
+        # Huggingface save
+
+        try:
+            repo_id = self.cfg.huggingface.repo_id
+            self.model.push_to_hub(repo_id)
+            with open('vocab_char_map.json', 'w') as json_file:
+                json.dump(self.model.vocab_char_map, json_file, indent=4)
+
+            huggingface_hub.upload_file(
+                path_or_fileobj="vocab_char_map.json",
+                path_in_repo="vocab_char_map.json",  # Path where the file should be uploaded in the repo
+                repo_id=repo_id,
+                repo_type="model",  # or "model" if it's a model repository
+            )
+            print(f"Sucessfully save to repo: {repo_id}")
+        except:
+            pass

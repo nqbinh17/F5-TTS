@@ -9,7 +9,7 @@ class TTSConfig(PretrainedConfig):
             hidden_size = 768,
             depth = 18,
             num_attention_heads = 12,
-            num_key_value_heads = None,
+            num_key_value_heads = 4,
             attn_implementation = 'chunk_attn', # default, chunk_attn
             intermediate_scale = 2,
             text_hidden_size = 512,
@@ -34,7 +34,9 @@ class TTSConfig(PretrainedConfig):
             odeint_method = 'euler',
             **kwargs
         ):
-
+        if attn_implementation is None:
+            attn_implementation = 'chunk_attn'
+            
         # Model Parameter Settings
         self.hidden_size = hidden_size
         self.depth = depth

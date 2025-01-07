@@ -648,7 +648,9 @@ class DiTBlock(nn.Module):
                  dropout=0.1, 
                  num_key_value_heads = 4, 
                  attn_implementation = 'default', 
-                 layer_idx = 0):
+                 layer_idx = 0,
+                 chunk_size=2048,
+                 local_window=384):
         
         super().__init__()
 
@@ -668,7 +670,9 @@ class DiTBlock(nn.Module):
                 num_attention_heads=heads,
                 num_key_value_heads=num_key_value_heads,
                 layer_idx=layer_idx,
-                attention_dropout=dropout
+                attention_dropout=dropout,
+                chunk_size=chunk_size,
+                local_window=local_window
             )
             
         else:

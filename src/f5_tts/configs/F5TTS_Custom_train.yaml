@@ -50,3 +50,6 @@ ckpts:
   save_per_updates: 100  # save checkpoint per steps
   last_per_steps: 200  # save last checkpoint per steps
   save_dir: ckpts/${model.name}_${model.mel_spec.mel_spec_type}_${model.tokenizer}_${datasets.name}
+
+huggingface:
+  repo_id: binhquoc/f5-tts

@@ -170,7 +170,9 @@ class ChunkLlamaAttention(nn.Module):
                  num_key_value_heads: int,
                  layer_idx: int,
                  attention_dropout: float = 0.0,
-                 max_position_embeddings: int = 32768
+                 max_position_embeddings: int = 32768,
+                 chunk_size=2048,
+                 local_window=384
                 ):
         super().__init__()
         self.layer_idx = layer_idx
@@ -197,8 +199,8 @@ class ChunkLlamaAttention(nn.Module):
             num_attention_heads * self.head_dim, hidden_size, bias=False
         )
 
-        self.chunk_size = 2048
-        self.local_window = 384
+        self.chunk_size = chunk_size
+        self.local_window = local_window
         self.chunk_len = self.chunk_size - self.local_window
 
     def forward(

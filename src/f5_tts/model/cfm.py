@@ -29,50 +29,64 @@ from f5_tts.model.utils import (
 )
 from f5_tts.model.config import TTSConfig
 from transformers.modeling_utils import PreTrainedModel
+from f5_tts.model import DiT
 
 class CFM(PreTrainedModel):
     config_class = TTSConfig
 
     def __init__(
         self,
-        transformer: nn.Module,
-        sigma=0.0,
-        odeint_kwargs: dict = dict(
-            # atol = 1e-5,
-            # rtol = 1e-5,
-            method="euler"  # 'midpoint'
-        ),
-        audio_drop_prob=0.3,
-        cond_drop_prob=0.2,
-        num_channels=None,
-        mel_spec_module: nn.Module | None = None,
-        mel_spec_kwargs: dict = dict(),
-        frac_lengths_mask: tuple[float, float] = (0.7, 1.0),
-        vocab_char_map: dict[str:int] | None = None,
+        config: TTSConfig,
+        vocab_char_map: dict[str:int] | None = None
     ):
-        super().__init__()
-
-        self.frac_lengths_mask = frac_lengths_mask
-
+        super().__init__(config)
+        self.config = config
+        self.frac_lengths_mask = config.frac_lengths_mask
+        
         # mel spec
-        self.mel_spec = default(mel_spec_module, MelSpec(**mel_spec_kwargs))
-        num_channels = default(num_channels, self.mel_spec.n_mel_channels)
-        self.num_channels = num_channels
+        self.mel_spec = MelSpec(
+            target_sample_rate = config.target_sample_rate,
+            n_mel_channels = config.n_mel_channels,
+            hop_length = config.hop_length,
+            win_length = config.win_length,
+            n_fft = config.n_fft,
+            mel_spec_type = config.mel_spec_type
+        )
+        self.num_channels = self.mel_spec.n_mel_channels
 
         # classifier-free guidance
-        self.audio_drop_prob = audio_drop_prob
-        self.cond_drop_prob = cond_drop_prob
+        self.audio_drop_prob = config.audio_drop_prob
+        self.cond_drop_prob = config.cond_drop_prob
 
         # transformer
-        self.transformer = transformer
-        dim = transformer.dim
-        self.dim = dim
+        assert config.hidden_size % config.num_attention_heads == 0
+        dim_head = config.hidden_size // config.num_attention_heads
+        self.transformer = DiT(
+            dim = config.hidden_size,
+            depth=config.depth,
+            heads=config.num_attention_heads,
+            dim_head=dim_head,
+            dropout=0.1,
+            ff_mult=config.intermediate_scale,
+            mel_dim=config.hidden_size,
+            text_num_embeds=config.vocab_size,
+            num_key_value_heads = config.num_key_value_heads,
+            text_dim=config.text_hidden_size,
+            conv_layers=config.conv_layers,
+            long_skip_connection=False,
+            checkpoint_activations=False,
+            attn_implementation = config.attn_implementation,
+            chunk_size = config.chunk_size,
+            local_window = config.local_window,
+        )
+
+        self.dim = config.hidden_size
 
         # conditional flow related
-        self.sigma = sigma
+        self.sigma = config.sigma
 
         # sampling related
-        self.odeint_kwargs = odeint_kwargs
+        self.odeint_kwargs = config.odeint_kwargs
 
         # vocab map for tokenization
         self.vocab_char_map = vocab_char_map
