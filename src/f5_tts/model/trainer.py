@@ -149,10 +149,14 @@ class Trainer:
             if not os.path.exists(self.checkpoint_path):
                 os.makedirs(self.checkpoint_path)
             if last:
-                self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_last.pt")
+                path = f"{self.checkpoint_path}/model_last.pt"
+                self.accelerator.save(checkpoint, path)
                 print(f"Saved last checkpoint at step {step}")
             else:
-                self.accelerator.save(checkpoint, f"{self.checkpoint_path}/model_{step}.pt")
+                path = f"{self.checkpoint_path}/model_{step}.pt"
+                self.accelerator.save(checkpoint, path)
+
+        return path
 
     def load_checkpoint(self):
         if (
@@ -277,6 +281,10 @@ class Trainer:
         else:
             skipped_epoch = 0
 
+        epoch_steps = len(train_dataloader)
+        steps_sample = int(epoch_steps // 2) # an epoch generate 2 times
+        save_paths = []
+
         for epoch in range(skipped_epoch, self.epochs):
             self.model.train()
             if exists(resumable_with_seed) and epoch == skipped_epoch:
@@ -296,6 +304,7 @@ class Trainer:
                     disable=not self.accelerator.is_local_main_process,
                 )
 
+            
             for batch in progress_bar:
                 with self.accelerator.accumulate(self.model):
                     text_inputs = batch["text"]
@@ -338,9 +347,7 @@ class Trainer:
 
                 progress_bar.set_postfix(step=str(global_step), loss=loss.item())
 
-                if global_step % (self.save_per_updates * self.grad_accumulation_steps) == 0:
-                    self.save_checkpoint(global_step)
-
+                if global_step % steps_sample == 0:
                     if self.log_samples and self.accelerator.is_local_main_process:
                         ref_audio_len = mel_lengths[0]
                         infer_text = [
@@ -370,6 +377,10 @@ class Trainer:
 
                 # Try to prevent memory leaks
                 del text_inputs, mel_spec, mel_lengths, audio_mask
+
+            # Save model at the end of each epoch
+            path = self.save_checkpoint(global_step)
+            save_paths.append(path)
 
         self.save_checkpoint(global_step, last=True)
 
