@@ -138,6 +138,7 @@ class Trainer:
 
     def save_checkpoint(self, step, last=False):
         self.accelerator.wait_for_everyone()
+        path = None
         if self.is_main:
             checkpoint = dict(
                 model_state_dict=self.accelerator.unwrap_model(self.model).state_dict(),

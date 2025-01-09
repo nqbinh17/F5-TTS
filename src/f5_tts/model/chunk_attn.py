@@ -24,7 +24,7 @@ def apply_rotary_pos_emb(x, cos, sin, position_ids):
     cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
     sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
     x_emb = (x * cos) + (rotate_half(x) * sin)
-    return x_emb
+    return x_emb.to(x.dtype)
 
 
 def merge_attn_outputs(flash_results):
@@ -87,8 +87,12 @@ def supports_flash_attention(device_id):
 def do_flash_attn(query_states, key_states, value_states, causal=True):
     # flash_attention
     if supports_flash_attention(query_states.device):
-        output, softmax_lse, _ = flash_attn_func(query_states.transpose(1, 2), key_states.transpose(1, 2),
-                                                value_states.transpose(1, 2), causal=causal, return_attn_probs=True)
+        dtype = query_states.dtype
+
+        output, softmax_lse, _ = flash_attn_func(query_states.transpose(1, 2).to(torch.float16), key_states.transpose(1, 2).to(torch.float16),
+                                                value_states.transpose(1, 2).to(torch.float16), causal=causal, return_attn_probs=True)
+        output = output.to(dtype)
+        softmax_lse = softmax_lse.to(dtype)
     else:
         output, softmax_lse = eager_attention_forward(query_states, key_states, value_states, causal = causal)
 

@@ -185,10 +185,7 @@ class CFM(PreTrainedModel):
             cond_mask, cond, torch.zeros_like(cond)
         )  # allow direct control (cut cond audio) with lens passed in
 
-        if batch > 1:
-            mask = lens_to_mask(duration)
-        else:  # save memory and speed up, as single inference need no mask currently
-            mask = None
+        mask = lens_to_mask(duration)
 
         # test for no ref audio
         if no_ref_audio:
