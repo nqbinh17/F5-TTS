@@ -25,7 +25,8 @@ def main(cfg):
                                  tokenizer, 
                                  dataset_type = cfg.datasets.dataset_type, 
                                  mel_spec_kwargs=cfg.model.mel_spec,
-                                 max_spec_lengths = cfg.datasets.max_spec_lengths)
+                                 max_spec_lengths = cfg.datasets.max_spec_lengths,
+                                 testing = cfg.datasets.testing)
     if hasattr(train_dataset, 'getTokenizer'):
         vocab_char_map, vocab_size = train_dataset.getTokenizer()
 

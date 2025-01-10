@@ -34,7 +34,8 @@ class AudioDataset(Dataset):
         win_length=1024,
         mel_spec_type="vocos",
         augmentation=False,
-        max_spec_lengths=2048
+        max_spec_lengths=2048,
+        testing = False
     ):
         
         total_file = 24
@@ -45,6 +46,8 @@ class AudioDataset(Dataset):
             return str(i)
 
         datafiles = [f"clean/train.100-000{buffer(i)}-of-00024.parquet" for i in range(total_file)]
+        if testing:
+            datafiles = ['clean/test-00000-of-00002.parquet', 'clean/test-00001-of-00002.parquet']
 
         self.dataset = datasets.load_dataset(
             "fixie-ai/librispeech_asr",
@@ -403,7 +406,8 @@ def load_dataset(
     audio_type: str = "raw",
     mel_spec_module: nn.Module | None = None,
     mel_spec_kwargs: dict = dict(),
-    max_spec_lengths: int = 2048
+    max_spec_lengths: int = 2048,
+    testing: bool = False
 ) -> CustomDataset | HFDataset:
     """
     dataset_type    - "CustomDataset" if you want to use tokenizer name and default data path to load for train_dataset
@@ -458,7 +462,7 @@ def load_dataset(
         )
 
     elif dataset_type == 'AudioDataset':
-        train_dataset = AudioDataset(**mel_spec_kwargs, max_spec_lengths=max_spec_lengths)
+        train_dataset = AudioDataset(**mel_spec_kwargs, max_spec_lengths=max_spec_lengths, testing = testing)
 
     return train_dataset
 

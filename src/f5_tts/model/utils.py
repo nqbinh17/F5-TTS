@@ -57,11 +57,8 @@ def mask_from_start_end_indices(seq_len: int["b"], start: int["b"], end: int["b"
 
 def mask_from_frac_lengths(seq_len: int["b"], frac_lengths: float["b"]):  # noqa: F722 F821
     lengths = (frac_lengths * seq_len).long()
-    max_start = seq_len - lengths
-
-    rand = torch.rand_like(frac_lengths)
-    start = (max_start * rand).long().clamp(min=0)
-    end = start + lengths
+    start = (seq_len - lengths).long().clamp(min=0)
+    end = seq_len
 
     return mask_from_start_end_indices(seq_len, start, end)
 
